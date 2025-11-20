@@ -1,12 +1,29 @@
 import cv2
 import mediapipe as mp
 import math
+from collections import deque
+import numpy as np
 
 # Initialize MediaPipe Pose and Hands
 mp_pose = mp.solutions.pose
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
+
+# -------------------------
+# ★ ADD: SMOOTHING BUFFERS
+# -------------------------
+SMOOTHING_WINDOW = 5
+smooth_buffers = {
+    "thumb": deque(maxlen=SMOOTHING_WINDOW),
+    "finger_center": deque(maxlen=SMOOTHING_WINDOW)
+}
+
+def smooth_point(buffer, new_point):
+    """Average last N points for smoother tracking."""
+    buffer.append(np.array(new_point))
+    return tuple(np.mean(buffer, axis=0).astype(int))
+# -----------------------------------------------------
 
 # Initialize webcam
 cap = cv2.VideoCapture(0)
@@ -89,24 +106,25 @@ with mp_pose.Pose(
             left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
             right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
             
-            # Calculate neck as midpoint between shoulders
+            # Calculate neck midpoint
             neck_ref = {
                 'x': (left_shoulder.x + right_shoulder.x) / 2,
                 'y': (left_shoulder.y + right_shoulder.y) / 2,
                 'z': (left_shoulder.z + right_shoulder.z) / 2
             }
             
-            # Draw neck reference point
+            # Draw neck reference
             neck_px = (int(neck_ref['x'] * w), int(neck_ref['y'] * h))
             cv2.circle(image, neck_px, 10, (255, 255, 0), -1)
             cv2.circle(image, neck_px, 12, (255, 255, 255), 2)
             cv2.putText(image, "NECK (0,0,0)", (neck_px[0] + 15, neck_px[1]), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
         
-        # Draw HAND as simple claw
+        # Draw HAND and Claw
         if hand_results.multi_hand_landmarks and neck_ref:
             for hand_idx, hand_landmarks in enumerate(hand_results.multi_hand_landmarks):
-                # Draw basic hand skeleton (subtle)
+                
+                # Draw subtle hand skeleton
                 mp_drawing.draw_landmarks(
                     image,
                     hand_landmarks,
@@ -114,61 +132,60 @@ with mp_pose.Pose(
                     mp_drawing.DrawingSpec(color=(180, 180, 180), thickness=1, circle_radius=2),
                     mp_drawing.DrawingSpec(color=(120, 120, 120), thickness=1))
                 
-                # Get handedness
+                # Handedness
                 handedness = hand_results.multi_handedness[hand_idx].classification[0].label
-                
-                # Get fingertips
+
+                # Extract raw fingertip positions
                 thumb = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
                 index = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
                 middle = hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
                 ring = hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_TIP]
                 pinky = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]
-                
-                # Convert to pixels
-                thumb_px = (int(thumb.x * w), int(thumb.y * h))
-                index_px = (int(index.x * w), int(index.y * h))
-                middle_px = (int(middle.x * w), int(middle.y * h))
-                ring_px = (int(ring.x * w), int(ring.y * h))
-                pinky_px = (int(pinky.x * w), int(pinky.y * h))
-                
-                # Calculate center of 4 fingers (claw jaw 2)
-                fingers_center_norm = {
-                    'x': (index.x + middle.x + ring.x + pinky.x) / 4,
-                    'y': (index.y + middle.y + ring.y + pinky.y) / 4,
-                    'z': (index.z + middle.z + ring.z + pinky.z) / 4
-                }
-                
-                fingers_center = (
-                    int(fingers_center_norm['x'] * w),
-                    int(fingers_center_norm['y'] * h)
+
+                # Convert to pixel coords
+                thumb_px_raw = (int(thumb.x * w), int(thumb.y * h))
+                fingers_center_raw = (
+                    int(((index.x + middle.x + ring.x + pinky.x) / 4) * w),
+                    int(((index.y + middle.y + ring.y + pinky.y) / 4) * h)
                 )
-                
-                # Calculate relative coordinates from neck
+
+                # --------------------------------------------
+                # ★ APPLY SMOOTHING HERE
+                # --------------------------------------------
+                thumb_px = smooth_point(smooth_buffers["thumb"], thumb_px_raw)
+                fingers_center = smooth_point(smooth_buffers["finger_center"], fingers_center_raw)
+                # --------------------------------------------
+
+                # Relative coordinates (unchanged)
+                fingers_center_norm = {
+                    "x": (index.x + middle.x + ring.x + pinky.x) / 4,
+                    "y": (index.y + middle.y + ring.y + pinky.y) / 4,
+                    "z": (index.z + middle.z + ring.z + pinky.z) / 4
+                }
+
                 thumb_rel = {
-                    'x': thumb.x - neck_ref['x'],
-                    'y': thumb.y - neck_ref['y'],
-                    'z': thumb.z - neck_ref['z']
+                    "x": thumb.x - neck_ref['x'],
+                    "y": thumb.y - neck_ref['y'],
+                    "z": thumb.z - neck_ref['z']
                 }
-                
+
                 fingers_rel = {
-                    'x': fingers_center_norm['x'] - neck_ref['x'],
-                    'y': fingers_center_norm['y'] - neck_ref['y'],
-                    'z': fingers_center_norm['z'] - neck_ref['z']
+                    "x": fingers_center_norm['x'] - neck_ref['x'],
+                    "y": fingers_center_norm['y'] - neck_ref['y'],
+                    "z": fingers_center_norm['z'] - neck_ref['z']
                 }
-                
-                # Calculate claw opening distance
+
+                # Claw distance
                 claw_distance = calculate_distance(thumb_px, fingers_center)
-                
-                # Draw claw jaws
-                # Jaw 1: Thumb (RED)
+
+                # Draw jaws
                 cv2.circle(image, thumb_px, 15, (0, 0, 255), -1)
                 cv2.circle(image, thumb_px, 17, (255, 255, 255), 2)
-                
-                # Jaw 2: Fingers center (BLUE)
+
                 cv2.circle(image, fingers_center, 15, (255, 0, 0), -1)
                 cv2.circle(image, fingers_center, 17, (255, 255, 255), 2)
-                
-                # Draw connection line
+
+                # Line between jaws
                 cv2.line(image, thumb_px, fingers_center, (0, 255, 255), 3)
                 
                 # Display distance
@@ -183,6 +200,7 @@ with mp_pose.Pose(
                 # Display coordinates relative to neck
                 panel_x = 10 if handedness == "Left" else w - 250
                 panel_y = 80
+                
                 
                 cv2.putText(image, f"{handedness} Hand", 
                             (panel_x, panel_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
