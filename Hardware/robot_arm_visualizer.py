@@ -102,9 +102,9 @@ for i, pos in enumerate(test_positions, 1):
     ax.set_title(f'Test Position {i}: {pos}', fontweight='bold')
     ax.grid(True, alpha=0.3)
     
-    print("  Close the window to see the next position...")
+    print("Close the window to see the next position...")
     plt.show()
 
 print("\n" + "="*60)
-print("VISUALIZATION COMPLETE!")
+print("VISUALIZATION COMPLETE")
 print("="*60)
