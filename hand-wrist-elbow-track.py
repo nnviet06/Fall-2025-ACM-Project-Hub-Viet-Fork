@@ -181,29 +181,20 @@ with mp_pose.Pose(
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
                 
                 # Display coordinates relative to neck
-                panel_x = 10 if handedness == "Left" else w - 400
-                panel_y = h - 180
+                panel_x = 10 if handedness == "Left" else w - 250
+                panel_y = 80
                 
-                cv2.rectangle(image, (panel_x - 5, panel_y - 25), 
-                             (panel_x + 395, panel_y + 155), (0, 0, 0), -1)
-                cv2.rectangle(image, (panel_x - 5, panel_y - 25), 
-                             (panel_x + 395, panel_y + 155), (255, 255, 255), 2)
-                
-                cv2.putText(image, f"{handedness} Hand - Relative to Neck", 
-                           (panel_x, panel_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                
-                cv2.putText(image, f"Jaw 1 (Thumb):", 
-                           (panel_x, panel_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-                cv2.putText(image, f"  X: {thumb_rel['x']:+.3f}  Y: {thumb_rel['y']:+.3f}  Z: {thumb_rel['z']:+.3f}", 
-                           (panel_x, panel_y + 55), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-                
-                cv2.putText(image, f"Jaw 2 (Fingers):", 
-                           (panel_x, panel_y + 85), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-                cv2.putText(image, f"  X: {fingers_rel['x']:+.3f}  Y: {fingers_rel['y']:+.3f}  Z: {fingers_rel['z']:+.3f}", 
-                           (panel_x, panel_y + 110), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-                
+                cv2.putText(image, f"{handedness} Hand", 
+                            (panel_x, panel_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+                cv2.putText(image, f"Thumb: X:{thumb_rel['x']:+.2f} Y:{thumb_rel['y']:+.2f} Z:{thumb_rel['z']:+.2f}", 
+                            (panel_x, panel_y + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 255), 1)
+
+                cv2.putText(image, f"Fingers: X:{fingers_rel['x']:+.2f} Y:{fingers_rel['y']:+.2f} Z:{fingers_rel['z']:+.2f}", 
+                            (panel_x, panel_y + 50), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 0, 0), 1)
+
                 cv2.putText(image, f"Distance: {claw_distance:.0f}px", 
-                           (panel_x, panel_y + 140), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+                            (panel_x, panel_y + 75), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
         
         # Display
         cv2.imshow('Arm & Claw Gripper Tracking', image)

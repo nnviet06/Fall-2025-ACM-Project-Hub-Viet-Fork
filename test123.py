@@ -5,16 +5,21 @@ import math
 # Initialize MediaPipe Pose and Hands
 mp_pose = mp.solutions.pose
 mp_hands = mp.solutions.hands
-mp_drawing = mp.solutions.drawing_utils   #Khác
-mp_drawing_styles = mp.solutions.drawing_styles #Khác 
+mp_drawing = mp.solutions.drawing_utils
+mp_drawing_styles = mp.solutions.drawing_styles
 
 # Initialize webcam
 cap = cv2.VideoCapture(0)
 
-
+# Fullscreen setup
+cv2.namedWindow('Arm & Claw Gripper Tracking', cv2.WINDOW_NORMAL)
+cv2.setWindowProperty('Arm & Claw Gripper Tracking', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
 # Arm landmarks
 arm_landmarks = [
+    mp_pose.PoseLandmark.LEFT_SHOULDER,
+    mp_pose.PoseLandmark.LEFT_ELBOW,
+    mp_pose.PoseLandmark.LEFT_WRIST,
     mp_pose.PoseLandmark.RIGHT_SHOULDER,
     mp_pose.PoseLandmark.RIGHT_ELBOW,
     mp_pose.PoseLandmark.RIGHT_WRIST,
@@ -22,6 +27,8 @@ arm_landmarks = [
 
 # Arm connections
 arm_connections = [
+    (mp_pose.PoseLandmark.LEFT_SHOULDER, mp_pose.PoseLandmark.LEFT_ELBOW),
+    (mp_pose.PoseLandmark.LEFT_ELBOW, mp_pose.PoseLandmark.LEFT_WRIST),
     (mp_pose.PoseLandmark.RIGHT_SHOULDER, mp_pose.PoseLandmark.RIGHT_ELBOW),
     (mp_pose.PoseLandmark.RIGHT_ELBOW, mp_pose.PoseLandmark.RIGHT_WRIST),
 ]
@@ -29,7 +36,6 @@ arm_connections = [
 def calculate_distance(point1, point2):
     """Calculate distance between two points"""
     return math.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
-#Khác
 
 # Configure MediaPipe
 with mp_pose.Pose(
