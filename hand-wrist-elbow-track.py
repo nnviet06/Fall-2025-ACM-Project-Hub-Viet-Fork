@@ -14,6 +14,21 @@ mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
 
+# -------------------------
+# ★ ADD: SMOOTHING BUFFERS
+# -------------------------
+SMOOTHING_WINDOW = 5
+smooth_buffers = {
+    "thumb": deque(maxlen=SMOOTHING_WINDOW),
+    "finger_center": deque(maxlen=SMOOTHING_WINDOW)
+}
+
+def smooth_point(buffer, new_point):
+    """Average last N points for smoother tracking."""
+    buffer.append(np.array(new_point))
+    return tuple(np.mean(buffer, axis=0).astype(int))
+# -----------------------------------------------------
+
 # Initialize webcam
 cap = cv2.VideoCapture(0)
 
