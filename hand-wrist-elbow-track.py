@@ -38,8 +38,10 @@ def smooth_point(buffer, new_point):
 # Initialize webcam
 cap = cv2.VideoCapture(0)
 
-# Fullscreen setup
-cv2.namedWindow('Arm & Claw Gripper Tracking')
+# Window setup - position on LEFT
+cv2.namedWindow('Arm & Claw Gripper Tracking', cv2.WINDOW_NORMAL)
+cv2.moveWindow('Arm & Claw Gripper Tracking', 0, 0)  # Top-left corner
+cv2.resizeWindow('Arm & Claw Gripper Tracking', 640, 480)
 
 
 # Arm landmarks
@@ -89,6 +91,8 @@ with mp_pose.Pose(
         fig.set_figheight(18)  
         fig.set_figwidth(26)  
         my_chain.plot(ik, ax, target=target_position)
+        mngr = plt.get_current_fig_manager()
+        mngr.window.setGeometry(650, 0, 800, 600)
         plt.xlim(-0.5, 0.5)
         plt.ylim(-0.5, 0.5)
         ax.set_zlim(0, 0.6)
@@ -188,10 +192,6 @@ with mp_pose.Pose(
 
                     # Get handedness
                     handedness = hand_results.multi_handedness[hand_idx].classification[0].label
-
-                    # Only track RIGHT hand (skip left hand)
-                    if handedness != "Right":
-                        continue
                     
                     # Get fingertips
                     thumb = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
