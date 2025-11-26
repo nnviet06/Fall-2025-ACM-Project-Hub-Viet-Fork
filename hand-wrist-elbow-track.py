@@ -6,6 +6,7 @@ import ikpy.utils.plot as plot_utils
 import numpy as np
 import matplotlib.pyplot as plt
 import serial
+from collections import deque
 
 
 # Initialize MediaPipe Pose and Hands
@@ -249,11 +250,6 @@ with mp_pose.Pose(
                     # Display coordinates relative to neck
                     panel_x = 10 if handedness == "Left" else w - 400
                     panel_y = h - 180
-                    
-                    cv2.rectangle(image, (panel_x - 5, panel_y - 25), 
-                                (panel_x + 395, panel_y + 155), (0, 0, 0), -1)
-                    cv2.rectangle(image, (panel_x - 5, panel_y - 25), 
-                                (panel_x + 395, panel_y + 155), (255, 255, 255), 2)
                     
                     cv2.putText(image, f"{handedness} Hand - Relative to Neck", 
                             (panel_x, panel_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
