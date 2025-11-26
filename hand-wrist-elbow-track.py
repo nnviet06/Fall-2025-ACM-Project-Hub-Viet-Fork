@@ -20,6 +20,10 @@ mp_drawing_styles = mp.solutions.drawing_styles
 # ★ ADD: SMOOTHING BUFFERS
 # -------------------------
 SMOOTHING_WINDOW = 5
+# Z-axis scaling constants
+Z_SCALE_FACTOR = 0.5  # Scale depth sensitivity
+Z_OFFSET = 0.3        # Base height offset
+
 smooth_buffers = {
     "thumb": deque(maxlen=SMOOTHING_WINDOW),
     "finger_center": deque(maxlen=SMOOTHING_WINDOW)
@@ -80,8 +84,6 @@ with mp_pose.Pose(
         print("The angles of each joints are: ", list(map(lambda r: math.degrees(r), ik.tolist())))
         computed_position = my_chain.forward_kinematics(ik)
         print("Computed position:", [f"{val:.2f}" for val in computed_position[:3, 3]])
-
-        
         
         fig, ax = plot_utils.init_3d_figure()
         fig.set_figheight(18)  
@@ -106,7 +108,8 @@ with mp_pose.Pose(
             ax.set_xlim(-0.5, 0.5)
             ax.set_ylim(-0.5, 0.5)
             ax.set_zlim(0, 0.6)
-            fig.canvas.draw_idle()
+            fig.canvas.draw()
+            plt.pause(0.001)
             
         def move(x,y,z): #Fix 2: Move function to match coordinate system
             global target_position, last_update_time
@@ -136,9 +139,26 @@ with mp_pose.Pose(
             pose_results = pose.process(image_rgb)
             hand_results = hands.process(image_rgb)
             
+            neck_ref = None
+
             # Draw ARM tracking
             if pose_results.pose_landmarks:
                 landmarks = pose_results.pose_landmarks.landmark
+                # Calculate neck reference FIRST
+                left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
+                right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
+                neck_ref = {
+                    'x': (left_shoulder.x + right_shoulder.x) / 2,
+                    'y': (left_shoulder.y + right_shoulder.y) / 2,
+                    'z': (left_shoulder.z + right_shoulder.z) / 2
+                }
+                
+                # Draw neck point
+                neck_px = (int(neck_ref['x'] * w), int(neck_ref['y'] * h))
+                cv2.circle(image, neck_px, 10, (255, 255, 0), -1)
+                cv2.circle(image, neck_px, 12, (255, 255, 255), 2)
+                cv2.putText(image, "NECK (0,0,0)", (neck_px[0] + 15, neck_px[1]), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
                 
                 # Draw arm connections
                 for connection in arm_connections:
@@ -154,28 +174,7 @@ with mp_pose.Pose(
                     px = (int(landmark.x * w), int(landmark.y * h))
                     cv2.circle(image, px, 8, (0, 0, 255), -1)
                     cv2.circle(image, px, 10, (255, 255, 255), 2)
-            
-            # Get neck reference point (average of shoulders)
-            neck_ref = None
-            if pose_results.pose_landmarks:
-                landmarks = pose_results.pose_landmarks.landmark
-                left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
-                right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
-                
-                # Calculate neck as midpoint between shoulders
-                neck_ref = {
-                    'x': (left_shoulder.x + right_shoulder.x) / 2,
-                    'y': (left_shoulder.y + right_shoulder.y) / 2,
-                    'z': (left_shoulder.z + right_shoulder.z) / 2
-                }
-                
-                # Draw neck reference point
-                neck_px = (int(neck_ref['x'] * w), int(neck_ref['y'] * h))
-                cv2.circle(image, neck_px, 10, (255, 255, 0), -1)
-                cv2.circle(image, neck_px, 12, (255, 255, 255), 2)
-                cv2.putText(image, "NECK (0,0,0)", (neck_px[0] + 15, neck_px[1]), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-            
+                    
             # Draw HAND as simple claw
             if hand_results.multi_hand_landmarks and neck_ref:
                 for hand_idx, hand_landmarks in enumerate(hand_results.multi_hand_landmarks):
@@ -228,8 +227,21 @@ with mp_pose.Pose(
                         'y': neck_ref['y'] - fingers_center_norm['y'],
                         'z': fingers_center_norm['z'] - neck_ref['z']
                     }
-                    z_scaled = -fingers_rel['z'] * 0.5 + 0.3
-                    move(fingers_rel['x'], z_scaled, fingers_rel['y'])
+                    # Apply smoothing to coordinates
+                    smooth_x = fingers_rel['x']
+                    smooth_y = fingers_rel['y']
+                    smooth_z = fingers_rel['z']
+
+                    if len(smooth_buffers["finger_center"]) > 0:
+                        smooth_buffers["finger_center"].append([fingers_rel['x'], fingers_rel['y'], fingers_rel['z']])
+                        smoothed = np.mean(smooth_buffers["finger_center"], axis=0)
+                        smooth_x, smooth_y, smooth_z = smoothed[0], smoothed[1], smoothed[2]
+                    else:
+                        smooth_buffers["finger_center"].append([fingers_rel['x'], fingers_rel['y'], fingers_rel['z']])
+
+                    z_scaled = -smooth_z * Z_SCALE_FACTOR + Z_OFFSET  # Fix 3: Scale and offset Z-axis
+                    move(smooth_x, z_scaled, smooth_y)
+
                     # Calculate claw opening distance
                     claw_distance = calculate_distance(thumb_px, fingers_center)
                     
