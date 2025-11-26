@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import serial
 from collections import deque
+import time
 
 
 # Initialize MediaPipe Pose and Hands
@@ -92,7 +93,7 @@ with mp_pose.Pose(
         plt.ion()
         plt.show(block= False)
 
-
+        last_update_time = 0
 
         def doIK():
             global ik
@@ -107,11 +108,17 @@ with mp_pose.Pose(
             ax.set_zlim(0, 0.6)
             fig.canvas.draw_idle()
             
-        def move(x,y,z):
-            global target_position
-            target_position = [x,y,z]
-            doIK()
-            updatePlot()
+        def move(x,y,z): #Fix 2: Move function to match coordinate system
+            global target_position, last_update_time
+            x = max(-0.5, min(0.5, x))
+            y = max(-0.5, min(0.5, y))
+            z = max(0.0, min(0.6, z))
+            current_time = time.time()
+            if current_time - last_update_time > 0.1:  
+                target_position = [x,y,z]
+                doIK()
+                updatePlot()
+                last_update_time = current_time
     
         while cap.isOpened():
             success, image = cap.read()
@@ -212,7 +219,7 @@ with mp_pose.Pose(
                     # Calculate relative coordinates from neck
                     thumb_rel = {
                         'x': thumb.x - neck_ref['x'],
-                        'y': thumb.y - neck_ref['y'],
+                        'y': neck_ref['y'] - thumb.y, # Fix 1: Invert Y for intuitive up-down
                         'z': thumb.z - neck_ref['z']
                     }
                     
