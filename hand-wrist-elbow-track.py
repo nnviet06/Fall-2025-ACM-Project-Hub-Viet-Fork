@@ -188,6 +188,10 @@ with mp_pose.Pose(
 
                     # Get handedness
                     handedness = hand_results.multi_handedness[hand_idx].classification[0].label
+
+                    # Only track RIGHT hand (skip left hand)
+                    if handedness != "Right":
+                        continue
                     
                     # Get fingertips
                     thumb = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
@@ -227,23 +231,30 @@ with mp_pose.Pose(
                         'y': neck_ref['y'] - fingers_center_norm['y'],
                         'z': fingers_center_norm['z'] - neck_ref['z']
                     }
-                    # Apply smoothing to coordinates
-                    smooth_x = fingers_rel['x']
-                    smooth_y = fingers_rel['y']
-                    smooth_z = fingers_rel['z']
+                
+                    # Calculate midpoint between thumb and fingers for better tracking
+                    mid_x = (thumb_rel['x'] + fingers_rel['x']) / 2
+                    mid_y = (thumb_rel['y'] + fingers_rel['y']) / 2
+                    mid_z = (thumb_rel['z'] + fingers_rel['z']) / 2
 
+                    # Apply smoothing
                     if len(smooth_buffers["finger_center"]) > 0:
-                        smooth_buffers["finger_center"].append([fingers_rel['x'], fingers_rel['y'], fingers_rel['z']])
+                        smooth_buffers["finger_center"].append([mid_x, mid_y, mid_z])
                         smoothed = np.mean(smooth_buffers["finger_center"], axis=0)
                         smooth_x, smooth_y, smooth_z = smoothed[0], smoothed[1], smoothed[2]
                     else:
-                        smooth_buffers["finger_center"].append([fingers_rel['x'], fingers_rel['y'], fingers_rel['z']])
+                        smooth_buffers["finger_center"].append([mid_x, mid_y, mid_z])
+                        smooth_x, smooth_y, smooth_z = mid_x, mid_y, mid_z
 
                     z_scaled = -smooth_z * Z_SCALE_FACTOR + Z_OFFSET  # Fix 3: Scale and offset Z-axis
                     move(smooth_x, z_scaled, smooth_y)
 
                     # Calculate claw opening distance
                     claw_distance = calculate_distance(thumb_px, fingers_center)
+                    # Map claw distance to gripper angle (0-180°)
+                    MIN_DISTANCE = 50
+                    MAX_DISTANCE = 200
+                    gripper_angle = np.clip((claw_distance - MIN_DISTANCE) / (MAX_DISTANCE - MIN_DISTANCE) * 180, 0, 180)
                     
                     # Draw claw jaws
                     # Jaw 1: Thumb (RED)
