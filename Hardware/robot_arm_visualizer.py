@@ -25,7 +25,7 @@ print("\nTarget Position: ", target_position)
 print("Target Orientation: ", target_orientation)
 print("\nJoint Angles (degrees):")
 for i, angle in enumerate(ik):
-    print(f"  Joint {i}: {math.degrees(angle):.2f}°")
+    print(f" Joint {i}: {math.degrees(angle):.2f}°")
 
 # Calculate actual position
 computed_position = my_chain.forward_kinematics(ik)
