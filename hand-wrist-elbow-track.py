@@ -4,276 +4,197 @@ import math
 import ikpy.chain
 import ikpy.utils.plot as plot_utils
 import numpy as np
+import os
 import matplotlib.pyplot as plt
-import serial
-from collections import deque
 
-
-# Initialize MediaPipe Pose and Hands
+# -------------------------
+# MediaPipe
+# -------------------------
 mp_pose = mp.solutions.pose
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
-mp_drawing_styles = mp.solutions.drawing_styles
 
 # -------------------------
-# ★ ADD: SMOOTHING BUFFERS
+# Camera
 # -------------------------
-SMOOTHING_WINDOW = 5
-smooth_buffers = {
-    "thumb": deque(maxlen=SMOOTHING_WINDOW),
-    "finger_center": deque(maxlen=SMOOTHING_WINDOW)
-}
-
-def smooth_point(buffer, new_point):
-    """Average last N points for smoother tracking."""
-    buffer.append(np.array(new_point))
-    return tuple(np.mean(buffer, axis=0).astype(int))
-# -----------------------------------------------------
-
-# Initialize webcam
 cap = cv2.VideoCapture(0)
+cv2.namedWindow("Arm & Claw Gripper Tracking")
 
-# Fullscreen setup
-cv2.namedWindow('Arm & Claw Gripper Tracking')
+# -------------------------
+# Load URDF
+# -------------------------
+script_dir = os.path.dirname(os.path.abspath(__file__))
+urdf_path = os.path.join(script_dir, "actual_arm_urdf.urdf")
 
+print("\nURDF path:", urdf_path)
+print("URDF exists:", os.path.exists(urdf_path), "\n")
 
-# Arm landmarks
-arm_landmarks = [
-    mp_pose.PoseLandmark.LEFT_SHOULDER,
-    mp_pose.PoseLandmark.LEFT_ELBOW,
-    mp_pose.PoseLandmark.LEFT_WRIST,
-    mp_pose.PoseLandmark.RIGHT_SHOULDER,
-    mp_pose.PoseLandmark.RIGHT_ELBOW,
-    mp_pose.PoseLandmark.RIGHT_WRIST,
-]
+my_chain = ikpy.chain.Chain.from_urdf_file(
+    urdf_path,
+    active_links_mask=[False, True, True, True, True, True, True]  
+    # last three True = wrist_joint_2 + finger_left + finger_right
+)
 
-# Arm connections
-arm_connections = [
-    (mp_pose.PoseLandmark.LEFT_SHOULDER, mp_pose.PoseLandmark.LEFT_ELBOW),
-    (mp_pose.PoseLandmark.LEFT_ELBOW, mp_pose.PoseLandmark.LEFT_WRIST),
-    (mp_pose.PoseLandmark.RIGHT_SHOULDER, mp_pose.PoseLandmark.RIGHT_ELBOW),
-    (mp_pose.PoseLandmark.RIGHT_ELBOW, mp_pose.PoseLandmark.RIGHT_WRIST),
-]
+my_chain._base_pose = np.eye(4)
 
-def calculate_distance(point1, point2):
-    """Calculate distance between two points"""
-    return math.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
+# -------------------------
+# 3D Robot Viewer
+# -------------------------
+fig, ax = plot_utils.init_3d_figure()
+fig.set_figwidth(8)
+fig.set_figheight(6)
+plt.ion()
 
-# Configure MediaPipe
-with mp_pose.Pose(
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5) as pose, \
-     mp_hands.Hands(
-    static_image_mode=False,
-    max_num_hands=1,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5) as hands:
+def center_axes():
+    ax.set_xlim(-0.5, 0.5)
+    ax.set_ylim(-0.5, 0.5)
+    ax.set_zlim(0, 0.6)
+    try:
+        ax.set_box_aspect([1,1,1])
+    except:
+        pass
 
-        my_chain = ikpy.chain.Chain.from_urdf_file("actual_arm_urdf.urdf", active_links_mask=[False, True, True, True, True, True])
+center_axes()
 
-        target_position = [0, 0.2, 0.1]
+# -------------------------
+# Robot target
+# -------------------------
+target_position = [0, 0.2, 0.1]
+target_orientation = [-1, 0, 0]
 
-        target_orientation = [-1, 0, 0]
+ik = my_chain.inverse_kinematics(target_position, target_orientation, orientation_mode="Y")
 
-        ik = my_chain.inverse_kinematics(target_position, target_orientation, orientation_mode="Y")
-        print("The angles of each joints are: ", list(map(lambda r: math.degrees(r), ik.tolist())))
-        computed_position = my_chain.forward_kinematics(ik)
-        print("Computed position:", [f"{val:.2f}" for val in computed_position[:3, 3]])
+# -------------------------
+# Gripper + wrist state
+# -------------------------
+grip_value = 0.0
+wrist_twist = 0.0
 
-        
-        
-        fig, ax = plot_utils.init_3d_figure()
-        fig.set_figheight(18)  
-        fig.set_figwidth(26)  
-        my_chain.plot(ik, ax, target=target_position)
-        plt.xlim(-0.5, 0.5)
-        plt.ylim(-0.5, 0.5)
-        ax.set_zlim(0, 0.6)
-        plt.ion()
-        plt.show(block= False)
+# -------------------------
+# Helpers
+# -------------------------
+def calculate_distance(p1, p2):
+    return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
 
+def clamp(x, a, b):
+    return max(a, min(b, x))
 
+def remap(x, in_min, in_max, out_min, out_max):
+    return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 
-        def doIK():
-            global ik
-            old_position = ik.copy()
-            ik = my_chain.inverse_kinematics(target_position, target_orientation, orientation_mode="Y", initial_position=old_position)
+# -------------------------
+# IK + Plot update
+# -------------------------
+def doIK():
+    global ik, grip_value, wrist_twist
 
-        def updatePlot():
-            ax.cla()
-            my_chain.plot(ik, ax, target=target_position)
-            ax.set_xlim(-0.5, 0.5)
-            ax.set_ylim(-0.5, 0.5)
-            ax.set_zlim(0, 0.6)
-            fig.canvas.draw_idle()
-            
-        def move(x,y,z):
-            global target_position
-            target_position = [x,y,z]
-            doIK()
-            updatePlot()
-    
-        while cap.isOpened():
-            success, image = cap.read()
-            if not success:
-                continue
-            
-            # Flip for selfie-view
-            image = cv2.flip(image, 1)
-            h, w, c = image.shape
-            
-            # Single RGB conversion
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            
-            # Process
-            pose_results = pose.process(image_rgb)
-            hand_results = hands.process(image_rgb)
-            
-            # Draw ARM tracking
-            if pose_results.pose_landmarks:
-                landmarks = pose_results.pose_landmarks.landmark
-                
-                # Draw arm connections
-                for connection in arm_connections:
-                    start = landmarks[connection[0]]
-                    end = landmarks[connection[1]]
-                    start_px = (int(start.x * w), int(start.y * h))
-                    end_px = (int(end.x * w), int(end.y * h))
-                    cv2.line(image, start_px, end_px, (0, 255, 0), 3)
-                
-                # Draw arm landmarks
-                for landmark_idx in arm_landmarks:
-                    landmark = landmarks[landmark_idx]
-                    px = (int(landmark.x * w), int(landmark.y * h))
-                    cv2.circle(image, px, 8, (0, 0, 255), -1)
-                    cv2.circle(image, px, 10, (255, 255, 255), 2)
-            
-            # Get neck reference point (average of shoulders)
-            neck_ref = None
-            if pose_results.pose_landmarks:
-                landmarks = pose_results.pose_landmarks.landmark
-                left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
-                right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
-                
-                # Calculate neck as midpoint between shoulders
-                neck_ref = {
-                    'x': (left_shoulder.x + right_shoulder.x) / 2,
-                    'y': (left_shoulder.y + right_shoulder.y) / 2,
-                    'z': (left_shoulder.z + right_shoulder.z) / 2
-                }
-                
-                # Draw neck reference point
-                neck_px = (int(neck_ref['x'] * w), int(neck_ref['y'] * h))
-                cv2.circle(image, neck_px, 10, (255, 255, 0), -1)
-                cv2.circle(image, neck_px, 12, (255, 255, 255), 2)
-                cv2.putText(image, "NECK (0,0,0)", (neck_px[0] + 15, neck_px[1]), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-            
-            # Draw HAND as simple claw
-            if hand_results.multi_hand_landmarks and neck_ref:
-                for hand_idx, hand_landmarks in enumerate(hand_results.multi_hand_landmarks):
-                    # Draw basic hand skeleton (subtle)
-                    mp_drawing.draw_landmarks(
-                        image,
-                        hand_landmarks,
-                        mp_hands.HAND_CONNECTIONS,
-                        mp_drawing.DrawingSpec(color=(180, 180, 180), thickness=1, circle_radius=2),
-                        mp_drawing.DrawingSpec(color=(120, 120, 120), thickness=1))
+    ik = my_chain.inverse_kinematics(
+        target_position,
+        target_orientation,
+        orientation_mode="Y",
+        initial_position=ik
+    )
 
-                    # Get handedness
-                    handedness = hand_results.multi_handedness[hand_idx].classification[0].label
-                    
-                    # Get fingertips
-                    thumb = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
-                    index = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
-                    middle = hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
-                    ring = hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_TIP]
-                    pinky = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]
-                    
-                    # Convert to pixels
-                    thumb_px = (int(thumb.x * w), int(thumb.y * h))
-                    index_px = (int(index.x * w), int(index.y * h))
-                    middle_px = (int(middle.x * w), int(middle.y * h))
-                    ring_px = (int(ring.x * w), int(ring.y * h))
-                    pinky_px = (int(pinky.x * w), int(pinky.y * h))
-                    
-                    # Calculate center of 4 fingers (claw jaw 2)
-                    fingers_center_norm = {
-                        'x': (index.x + middle.x + ring.x + pinky.x) / 4,
-                        'y': (index.y + middle.y + ring.y + pinky.y) / 4,
-                        'z': (index.z + middle.z + ring.z + pinky.z) / 4
-                    }
-                    
-                    fingers_center = (
-                        int(fingers_center_norm['x'] * w),
-                        int(fingers_center_norm['y'] * h)
-                    )
-                    
-                    # Calculate relative coordinates from neck
-                    thumb_rel = {
-                        'x': thumb.x - neck_ref['x'],
-                        'y': thumb.y - neck_ref['y'],
-                        'z': thumb.z - neck_ref['z']
-                    }
-                    
-                    fingers_rel = {
-                        'x': fingers_center_norm['x'] - neck_ref['x'],
-                        'y': neck_ref['y'] - fingers_center_norm['y'],
-                        'z': fingers_center_norm['z'] - neck_ref['z']
-                    }
-                    z_scaled = -fingers_rel['z'] * 0.5 + 0.3
-                    move(fingers_rel['x'], z_scaled, fingers_rel['y'])
-                    # Calculate claw opening distance
-                    claw_distance = calculate_distance(thumb_px, fingers_center)
-                    
-                    # Draw claw jaws
-                    # Jaw 1: Thumb (RED)
-                    cv2.circle(image, thumb_px, 15, (0, 0, 255), -1)
-                    cv2.circle(image, thumb_px, 17, (255, 255, 255), 2)
-                    
-                    # Jaw 2: Fingers center (BLUE)
-                    cv2.circle(image, fingers_center, 15, (255, 0, 0), -1)
-                    cv2.circle(image, fingers_center, 17, (255, 255, 255), 2)
-                    
-                    # Draw connection line
-                    cv2.line(image, thumb_px, fingers_center, (0, 255, 255), 3)
-                    
-                    # Display distance
-                    mid_point = (
-                        int((thumb_px[0] + fingers_center[0]) / 2),
-                        int((thumb_px[1] + fingers_center[1]) / 2)
-                    )
-                    cv2.putText(image, f"{claw_distance:.0f}px", 
-                            (mid_point[0] + 10, mid_point[1] - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                    
-                    # Display coordinates relative to neck
-                    panel_x = 10 if handedness == "Left" else w - 400
-                    panel_y = h - 180
-                    
-                    cv2.putText(image, f"{handedness} Hand - Relative to Neck", 
-                            (panel_x, panel_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                    
-                    cv2.putText(image, f"Jaw 1 (Thumb):", 
-                            (panel_x, panel_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-                    cv2.putText(image, f"  X: {thumb_rel['x']:+.3f}  Y: {thumb_rel['y']:+.3f}  Z: {thumb_rel['z']:+.3f}", 
-                            (panel_x, panel_y + 55), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-                    
-                    cv2.putText(image, f"Jaw 2 (Fingers):", 
-                            (panel_x, panel_y + 85), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-                    cv2.putText(image, f"  X: {fingers_rel['x']:+.3f}  Y: {fingers_rel['y']:+.3f}  Z: {fingers_rel['z']:+.3f}", 
-                            (panel_x, panel_y + 110), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-                    
-                    cv2.putText(image, f"Distance: {claw_distance:.0f}px", 
-                            (panel_x, panel_y + 140), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
-            
-            # Display
-            cv2.imshow('Arm & Claw Gripper Tracking', image)
+    # Apply wrist rotation
+    ik[-3] = wrist_twist
 
-            
-            # Exit on 'q'
-            if cv2.waitKey(5) & 0xFF == ord('q'):
-                break
+    # Apply gripper fingers
+    ik[-2] = grip_value  # left finger
+    ik[-1] = grip_value  # right finger
+
+    ax.cla()
+    center_axes()
+    my_chain.plot(ik, ax, target=target_position)
+    plt.pause(0.001)
+
+def move(x, y, z):
+    global target_position
+    target_position = [x, y, z]
+    doIK()
+
+# -------------------------
+# Models
+# -------------------------
+pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
+hands = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.5, min_tracking_confidence=0.5)
+
+# -------------------------
+# Main loop
+# -------------------------
+while cap.isOpened():
+    success, image = cap.read()
+    if not success:
+        continue
+
+    image = cv2.flip(image, 1)
+    h, w, _ = image.shape
+    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    pose_results = pose.process(rgb)
+    hand_results = hands.process(rgb)
+
+    # -------------------------
+    # Neck reference
+    # -------------------------
+    neck_ref = None
+    if pose_results.pose_landmarks:
+        lm = pose_results.pose_landmarks.landmark
+        ls = lm[mp_pose.PoseLandmark.LEFT_SHOULDER]
+        rs = lm[mp_pose.PoseLandmark.RIGHT_SHOULDER]
+
+        neck_ref = {
+            "x": (ls.x + rs.x) / 2,
+            "y": (ls.y + rs.y) / 2,
+            "z": (ls.z + rs.z) / 2
+        }
+
+        px = (int(neck_ref["x"] * w), int(neck_ref["y"] * h))
+        cv2.circle(image, px, 10, (255, 255, 0), -1)
+
+    # -------------------------
+    # Hand tracking
+    # -------------------------
+    if hand_results.multi_hand_landmarks and neck_ref:
+        hand = hand_results.multi_hand_landmarks[0]
+        mp_drawing.draw_landmarks(image, hand, mp_hands.HAND_CONNECTIONS)
+
+        thumb = hand.landmark[mp_hands.HandLandmark.THUMB_TIP]
+        index = hand.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+        middle = hand.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
+        ring = hand.landmark[mp_hands.HandLandmark.RING_FINGER_TIP]
+        pinky = hand.landmark[mp_hands.HandLandmark.PINKY_TIP]
+
+        # Gripper
+        pinch = calculate_distance(
+            (thumb.x, thumb.y),
+            (index.x, index.y)
+        )
+        grip_value = remap(pinch, 0.02, 0.12, 0.0, 0.04)
+        grip_value = clamp(grip_value, 0.0, 0.04)
+
+        # Wrist rotation
+        ix, iy = index.x, index.y
+        px, py = pinky.x, pinky.y
+        hand_angle = math.atan2(py - iy, px - ix)
+        wrist_twist = clamp(hand_angle, -1.5, 1.5)
+
+        # End-effector XYZ
+        fingers_x = (index.x + middle.x + ring.x + pinky.x) / 4
+        fingers_y = (index.y + middle.y + ring.y + pinky.y) / 4
+        fingers_z = (index.z + middle.z + ring.z + pinky.z) / 4
+
+        fingers_rel = {
+            "x": fingers_x - neck_ref["x"],
+            "y": neck_ref["y"] - fingers_y,
+            "z": fingers_z - neck_ref["z"]
+        }
+        z_scaled = -fingers_rel["z"] * 0.5 + 0.3
+
+        move(fingers_rel["x"], z_scaled, fingers_rel["y"])
+
+    cv2.imshow("Arm & Claw Gripper Tracking", image)
+    if cv2.waitKey(1) & 0xFF == ord("q"):
+        break
 
 cap.release()
 cv2.destroyAllWindows()

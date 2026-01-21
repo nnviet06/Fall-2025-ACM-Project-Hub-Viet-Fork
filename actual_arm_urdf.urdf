@@ -1,4 +1,15 @@
 <robot name="robotic_arm">
+
+    <!-- FIXED WORLD FRAME (REQUIRED BY IKPy) -->
+    <link name="world"/>
+
+    <joint name="world_to_base" type="fixed">
+        <parent link="world"/>
+        <child link="base_link"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <!-- BASE -->
     <link name="base_link">
         <visual>
             <origin xyz="0 0 0.045" rpy="0 0 0"/>
@@ -24,8 +35,7 @@
         <limit lower="-3.14" upper="3.14"/>
     </joint>
 
-
-
+    <!-- LOWER ARM -->
     <link name="lower_arm">
         <visual>
             <origin xyz="0 0 0.12375" rpy="0 0 0"/>
@@ -43,8 +53,7 @@
         <limit lower="-1.57" upper="1.57"/>
     </joint>
 
-
-
+    <!-- CENTER ARM -->
     <link name="center_arm">
         <visual>
             <origin xyz="0 0 0.08625" rpy="0 0 0"/>
@@ -62,8 +71,7 @@
         <limit lower="-2.1" upper="2.1"/>
     </joint>
 
-
-
+    <!-- UPPER ARM -->
     <link name="upper_arm">
         <visual>
             <origin xyz="0 0 0.05375" rpy="0 0 0"/>
@@ -81,8 +89,7 @@
         <limit lower="-2.1" upper="2.1"/>
     </joint>
 
-
-
+    <!-- GRIPPER BASE -->
     <link name="gripper">
         <visual>
             <origin xyz="0 0 0.0125" rpy="0 0 0"/>
@@ -99,4 +106,41 @@
         <axis xyz="0 0 1"/>
         <limit lower="-3.14" upper="3.14"/>
     </joint>
+
+    <!-- LEFT FINGER -->
+    <link name="finger_left">
+        <visual>
+            <origin xyz="-0.05 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.05 0.02 0.025"/>
+            </geometry>
+        </visual>
+    </link>
+
+    <joint name="finger_left_joint" type="prismatic">
+        <parent link="gripper"/>
+        <child link="finger_left"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <axis xyz="-1 0 0"/>
+        <limit lower="0" upper="0.04"/>
+    </joint>
+
+    <!-- RIGHT FINGER -->
+    <link name="finger_right">
+        <visual>
+            <origin xyz="0.05 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.05 0.02 0.025"/>
+            </geometry>
+        </visual>
+    </link>
+
+    <joint name="finger_right_joint" type="prismatic">
+        <parent link="gripper"/>
+        <child link="finger_right"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <axis xyz="1 0 0"/>
+        <limit lower="0" upper="0.04"/>
+    </joint>
+
 </robot>
