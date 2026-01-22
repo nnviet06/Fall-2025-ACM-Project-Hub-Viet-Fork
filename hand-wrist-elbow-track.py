@@ -31,7 +31,8 @@ print("URDF exists:", os.path.exists(urdf_path), "\n")
 
 my_chain = ikpy.chain.Chain.from_urdf_file(
     urdf_path,
-    active_links_mask=[False, True, True, True, True, True, True]  
+    active_links_mask=[False, True, True, True, True, True, False]
+ 
     # last three True = wrist_joint_2 + finger_left + finger_right
 )
 
@@ -169,8 +170,9 @@ while cap.isOpened():
             (thumb.x, thumb.y),
             (index.x, index.y)
         )
-        grip_value = remap(pinch, 0.02, 0.12, 0.0, 0.04)
-        grip_value = clamp(grip_value, 0.0, 0.04)
+        grip_value = remap(pinch, 0.02, 0.12, 0.0, 1.0)
+        grip_value = clamp(grip_value, 0.0, 1.0)
+
 
         # Wrist rotation
         ix, iy = index.x, index.y
