@@ -31,7 +31,7 @@ print("URDF exists:", os.path.exists(urdf_path), "\n")
 
 my_chain = ikpy.chain.Chain.from_urdf_file(
     urdf_path,
-    active_links_mask=[False, True, True, True, True, True, True, False, False]
+    active_links_mask=[False, True, True, True, True, True, False]
  
     # last three True = wrist_joint_2 + finger_left + finger_right
 )
@@ -99,7 +99,7 @@ def doIK():
     )
 
     ik[-3] = clamp(wrist_twist, -3.14, 3.14)
-    ik[-2] = clamp(grip_value, 0.0, 1.0)
+    ik[-2] = clamp(wrist_twist, -3.14, 3.14)
 
     # TO_DO: Send to Arduino
     # angles_deg = [math.degrees(ik[i]) for i in range(1, 7)]
