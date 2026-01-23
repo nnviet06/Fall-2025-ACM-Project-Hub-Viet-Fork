@@ -31,7 +31,7 @@ print("URDF exists:", os.path.exists(urdf_path), "\n")
 
 my_chain = ikpy.chain.Chain.from_urdf_file(
     urdf_path,
-    active_links_mask=[False, True, True, True, True, True, False]
+    active_links_mask=[False, True, True, True, True, True, True, False, False]
  
     # last three True = wrist_joint_2 + finger_left + finger_right
 )
@@ -101,6 +101,10 @@ def doIK():
     ik[-3] = clamp(wrist_twist, -3.14, 3.14)
     ik[-2] = clamp(grip_value, 0.0, 1.0)
 
+    # TO_DO: Send to Arduino
+    # angles_deg = [math.degrees(ik[i]) for i in range(1, 7)]
+    # send_to_arduino(angles_deg)
+
     frame_count += 1
     if frame_count % PLOT_EVERY_N == 0:
         ax.cla()
@@ -126,8 +130,6 @@ PLOT_EVERY_N = 2  # draw every 2 frames (~30 FPS)
 
 smoothed_neck = None
 NECK_ALPHA = 0.2
-
-
 
 # -------------------------
 # Main loop
@@ -221,6 +223,7 @@ while cap.isOpened():
     cv2.imshow("Arm & Claw Gripper Tracking", image)
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
+
         
 pose.close()
 hands.close()
