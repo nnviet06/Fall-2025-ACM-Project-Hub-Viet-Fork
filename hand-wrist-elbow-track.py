@@ -81,13 +81,15 @@ def clamp(x, a, b):
     return max(a, min(b, x))
 
 def remap(x, in_min, in_max, out_min, out_max):
+    if abs(in_max - in_min) < 1e-6:
+        return out_min
     return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 
 # -------------------------
 # IK + Plot update
 # -------------------------
 def doIK():
-    global ik, grip_value, wrist_twist
+    global ik, grip_value, wrist_twist, frame_count
 
     ik = my_chain.inverse_kinematics(
         target_position,
@@ -96,17 +98,16 @@ def doIK():
         initial_position=ik
     )
 
-    # Apply wrist rotation
-    ik[-3] = wrist_twist
+    ik[-3] = clamp(wrist_twist, -3.14, 3.14)
+    ik[-2] = clamp(grip_value, 0.0, 1.0)
 
-    # Apply gripper fingers
-    ik[-2] = grip_value  # left finger
-    ik[-1] = grip_value  # right finger
+    frame_count += 1
+    if frame_count % PLOT_EVERY_N == 0:
+        ax.cla()
+        center_axes()
+        my_chain.plot(ik, ax, target=target_position)
+        plt.pause(0.001)
 
-    ax.cla()
-    center_axes()
-    my_chain.plot(ik, ax, target=target_position)
-    plt.pause(0.001)
 
 def move(x, y, z):
     global target_position
@@ -118,6 +119,15 @@ def move(x, y, z):
 # -------------------------
 pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 hands = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.5, min_tracking_confidence=0.5)
+
+
+frame_count = 0
+PLOT_EVERY_N = 2  # draw every 2 frames (~30 FPS)
+
+smoothed_neck = None
+NECK_ALPHA = 0.2
+
+
 
 # -------------------------
 # Main loop
@@ -137,20 +147,34 @@ while cap.isOpened():
     # -------------------------
     # Neck reference
     # -------------------------
-    neck_ref = None
     if pose_results.pose_landmarks:
         lm = pose_results.pose_landmarks.landmark
         ls = lm[mp_pose.PoseLandmark.LEFT_SHOULDER]
         rs = lm[mp_pose.PoseLandmark.RIGHT_SHOULDER]
 
+        new_neck = np.array([
+            (ls.x + rs.x) / 2,
+            (ls.y + rs.y) / 2,
+            (ls.z + rs.z) / 2
+        ])
+
+        if smoothed_neck is None:
+            smoothed_neck = new_neck
+        else:
+            smoothed_neck = (
+                NECK_ALPHA * new_neck
+                + (1.0 - NECK_ALPHA) * smoothed_neck
+            )
+
         neck_ref = {
-            "x": (ls.x + rs.x) / 2,
-            "y": (ls.y + rs.y) / 2,
-            "z": (ls.z + rs.z) / 2
+            "x": smoothed_neck[0],
+            "y": smoothed_neck[1],
+            "z": smoothed_neck[2]
         }
 
         px = (int(neck_ref["x"] * w), int(neck_ref["y"] * h))
         cv2.circle(image, px, 10, (255, 255, 0), -1)
+
 
     # -------------------------
     # Hand tracking
@@ -197,6 +221,9 @@ while cap.isOpened():
     cv2.imshow("Arm & Claw Gripper Tracking", image)
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
+        
+pose.close()
+hands.close()
 
 cap.release()
 cv2.destroyAllWindows()
