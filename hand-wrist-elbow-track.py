@@ -6,6 +6,8 @@ import ikpy.utils.plot as plot_utils
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+import serial
+import serial.tools.list_ports
 
 # -------------------------
 # MediaPipe
@@ -19,6 +21,31 @@ mp_drawing = mp.solutions.drawing_utils
 # -------------------------
 cap = cv2.VideoCapture(0)
 cv2.namedWindow("Arm & Claw Gripper Tracking")
+
+
+# -------------------------
+# Arduino Connection
+# -------------------------
+def find_arduino():
+    """Auto-detect Arduino COM port"""
+    ports = list(serial.tools.list_ports.comports())
+    for p in ports:
+        if ("Arduino" in p.description) or ("CH340" in p.description) or ("USB Serial" in p.description):
+            return p.device
+    return None
+
+arduino_port = find_arduino()
+arduino = None
+
+if arduino_port:
+    try:
+        arduino = serial.Serial(arduino_port, 9600, timeout=1)
+        print(f"✓ Arduino connected on {arduino_port}")
+    except Exception as e:
+        print(f"✗ Could not open {arduino_port}: {e}")
+        arduino = None
+else:
+    print("✗ No Arduino detected")
 
 # -------------------------
 # Load URDF
@@ -102,8 +129,8 @@ def doIK():
     ik[-2] = clamp(wrist_twist, -3.14, 3.14)
 
     # TO_DO: Send to Arduino
-    # angles_deg = [math.degrees(ik[i]) for i in range(1, 7)]
-    # send_to_arduino(angles_deg)
+    angles_deg = [math.degrees(ik[i]) for i in range(1, 7)]
+    send_to_arduino(angles_deg)
 
     frame_count += 1
     if frame_count % PLOT_EVERY_N == 0:
@@ -117,6 +144,26 @@ def move(x, y, z):
     global target_position
     target_position = [x, y, z]
     doIK()
+
+
+def send_to_arduino(angles):
+    """
+    Send 6 joint angles to Arduino
+    angles: list of 6 floats (in degrees)
+    Format: "90,45,30,60,80,90\n"
+    """
+    if arduino is None:
+        return
+    
+    try:
+        # Clamp angles to 0-180
+        clamped = [int(clamp(a, 0, 180)) for a in angles]
+        
+        # Format: "angle1,angle2,angle3,angle4,angle5,angle6\n"
+        cmd = ",".join(map(str, clamped)) + "\n"
+        arduino.write(cmd.encode())
+    except Exception as e:
+        print(f"Serial error: {e}")
 
 # -------------------------
 # Models
@@ -229,4 +276,7 @@ pose.close()
 hands.close()
 
 cap.release()
+if arduino:
+    arduino.close()
+    print("Arduino connection closed")
 cv2.destroyAllWindows()
