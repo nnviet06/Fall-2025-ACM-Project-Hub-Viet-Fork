@@ -214,9 +214,19 @@ def updatePlot():
 
 def move(x, y, z):
     global target_position
-    target_position = [x, y, z]
+    
+    # Transform camera coordinates to robot workspace
+    robot_x = x  # Horizontal (left/right)
+    robot_y = -z * 0.5 + 0.3  # Depth → forward/backward
+    robot_z = -y * 0.3 + 0.3  # Vertical → height
+    
+    # Clamp to workspace limits
+    robot_x = max(-0.5, min(0.5, robot_x))
+    robot_y = max(0, min(0.5, robot_y))
+    robot_z = max(0, min(0.6, robot_z))
+    
+    target_position = [robot_x, robot_y, robot_z]
     doIK()
-    #updatePlot()
     send_all_motors(0.2, ik[5].item(), ik[4].item(), ik[3].item(), ik[2].item(), ik[1].item())
 
 
