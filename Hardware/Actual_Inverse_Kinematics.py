@@ -246,8 +246,8 @@ while cap.isOpened():
 
         neck_ref = {
             "x": (ls.x + rs.x) / 2,
-            "y": (ls.y + rs.y) / 2,
-            "z": (ls.z + rs.z) / 2
+            "y": (ls.z + rs.z) / 2,
+            "z": (ls.y + rs.y) / 2
         }
 
 
@@ -335,8 +335,8 @@ while cap.isOpened():
 
 
         x_scaled = -fingers_rel["x"]
-        y_scaled = fingers_rel["y"] *- 1 + 0.5
-        z_scaled = fingers_rel["z"] *-1 + 1
+        y_scaled = fingers_rel["y"] * -1 + 0.5
+        z_scaled = fingers_rel["z"] * -1 + 1
 
 
         # -------------------------
